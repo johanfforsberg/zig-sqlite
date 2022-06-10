@@ -3781,7 +3781,9 @@ test "sqlite: create aggregate function" {
         }.step,
         struct {
             fn finalize(ctx: *MyContext) u32 {
-                return ctx.sum;
+                const sum = ctx.sum;
+                ctx.sum = 0;
+                return sum;
             }
         }.finalize,
         .{},
@@ -3789,31 +3791,42 @@ test "sqlite: create aggregate function" {
 
     // Initialize some data
 
-    try db.exec("CREATE TABLE view(id integer PRIMARY KEY, nb integer)", .{}, .{});
-    var i: usize = 0;
-    var exp: usize = 0;
-    while (i < 20) : (i += 1) {
-        const val = rand.random().intRangeAtMost(u32, 0, 5205905);
-        exp += val;
+    try db.exec("CREATE TABLE view(id integer PRIMARY KEY, a integer, b integer)", .{}, .{});
 
-        try db.exec("INSERT INTO view(nb) VALUES(?{u32})", .{}, .{val});
+    var n: usize = 0;
+    while (n < 10) : (n += 1) {
+        try db.exec("DELETE FROM view", .{}, .{});
+
+        var i: usize = 0;
+        var exp1: usize = 0;
+        var exp2: usize = 0;
+        while (i < 20) : (i += 1) {
+            const val1 = rand.random().intRangeAtMost(u32, 0, 5205905);
+            exp1 += val1;
+
+            const val2 = rand.random().intRangeAtMost(u32, 0, 5205906);
+            exp2 += val2;
+
+            try db.exec("INSERT INTO view(a, b) VALUES(?{u32}, ?{u32})", .{}, .{ val1, val2 });
+        }
+
+        // Get the sum and check the result
+
+        var diags = Diagnostics{};
+        const result = db.one(
+            struct { a: usize, b: usize },
+            "SELECT mySum(a), mySum(b) FROM view",
+            .{ .diags = &diags },
+            .{},
+        ) catch |err| {
+            debug.print("err: {}\n", .{diags});
+            return err;
+        };
+
+        try testing.expect(result != null);
+        try testing.expectEqual(@as(usize, exp1), result.?.a);
+        try testing.expectEqual(@as(usize, exp2), result.?.b);
     }
-
-    // Get the sum and check the result
-
-    var diags = Diagnostics{};
-    const result = db.one(
-        usize,
-        "SELECT mySum(nb) FROM view",
-        .{ .diags = &diags },
-        .{},
-    ) catch |err| {
-        debug.print("err: {}\n", .{diags});
-        return err;
-    };
-
-    try testing.expect(result != null);
-    try testing.expectEqual(@as(usize, exp), result.?);
 }
 
 test "sqlite: empty slice" {
