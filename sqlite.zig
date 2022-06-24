@@ -1028,6 +1028,7 @@ pub const QueryOptions = struct {
     /// in the prepare() call. this is useful for multiple-statements being
     /// processed.
     sql_tail_ptr: ?*?[*:0]const u8 = null,
+    allocator: ?std.mem.Allocator = null,
 };
 
 /// Iterator allows iterating over a result set.
@@ -1366,7 +1367,7 @@ pub fn Iterator(comptime Type: type) type {
                             ret.* = try self.readField(ptr.child, options, i);
                         },
                         .Slice => switch (ptr.child) {
-                            u8 => ret = try self.readBytes(PointerType, options.allocator, i, .Text),
+                            u8 => ret = try self.readBytes(PointerType, options.allocator.?, i, .Text),
                             else => @compileError("cannot read pointer of type " ++ @typeName(PointerType)),
                         },
                         else => @compileError("cannot read pointer of type " ++ @typeName(PointerType)),
